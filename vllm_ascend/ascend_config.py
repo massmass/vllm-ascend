@@ -144,10 +144,10 @@ class AscendConfig:
                 "collectives need uniform num_tokens across DP ranks, which is "
                 "only guaranteed when the recompute scheduler is enabled."
             )
-        self.enable_cpu_binding = additional_config.get("enable_cpu_binding", True)
+        self.enable_cpu_binding = self._get_bool(additional_config, "enable_cpu_binding", True)
         self.enable_sleep_mode_extra_cleanup = additional_config.get("enable_sleep_mode_extra_cleanup", False)
         self.multistream_dsv4_dsa_overlap = additional_config.get("multistream_dsv4_dsa_overlap", True)
-        self.enable_prefill_mc2 = bool(additional_config.get("enable_prefill_mc2", False))
+        self.enable_prefill_mc2 = self._get_bool(additional_config, "enable_prefill_mc2", False)
 
         self.enable_fused_mc2 = self._get_config_value(
             additional_config,
@@ -304,6 +304,49 @@ class AscendConfig:
                 "next release."
             )
         return env_value
+
+    @staticmethod
+    def _get_bool(additional_config: dict[str, Any], config_key: str, default: bool) -> bool:
+        """Strictly resolve a boolean from ``additional_config``.
+
+        Accepts real booleans and the case-insensitive strings
+        ``"true"``/``"false"``/``"0"``/``"1"``. This avoids the Python pitfall
+        where ``bool("false")`` evaluates to ``True``: a user writing
+        ``{"enable_x": "false"}`` in additional-config now correctly *disables*
+        the feature instead of silently enabling it.
+
+        ``None`` is treated as "use the default" (key effectively unset). Any
+        other type (int other than via string, float, list, dict, ...) raises
+        ``TypeError`` so mis-typed values fail fast with a clear message rather
+        than being coerced into an unexpected truthiness.
+
+        Integer-style booleans like ``{"enable_x": 0}`` are intentionally
+        rejected here — JSON booleans should be ``true``/``false``. Integer
+        enums (e.g. ``weight_nz_mode``) are handled by a separate int helper.
+        """
+        if config_key not in additional_config:
+            return default
+        value = additional_config[config_key]
+        # NOTE: bool is a subclass of int; check bool first if int support is
+        # ever added here.
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in ("true", "1"):
+                return True
+            if normalized in ("false", "0"):
+                return False
+            raise TypeError(
+                f"additional_config.{config_key} must be a boolean or one of "
+                f"'true'/'false'/'0'/'1', got string {value!r}."
+            )
+        raise TypeError(
+            f"additional_config.{config_key} must be a boolean, got "
+            f"{type(value).__name__} ({value!r}). Use true/false in JSON."
+        )
 
     @classmethod
     def _check_mooncake_c8_kv_cache_quant(cls, vllm_config: "VllmConfig") -> None:

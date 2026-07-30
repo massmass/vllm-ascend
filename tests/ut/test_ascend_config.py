@@ -477,6 +477,35 @@ class TestAscendConfig(TestBase):
         self.assertIsNot(first_ascend_config, second_ascend_config)
         self.assertTrue(second_ascend_config.ascend_compilation_config.enable_npugraph_ex)
 
+    @_clean_up_ascend_config
+    @patch("vllm_ascend.platform.NPUPlatform.check_and_update_config")
+    def test_enable_prefill_mc2_string_false_disables_feature(self, mock_fix_incompatible_config):
+        # Regression: bool("false") is True in Python, so a user writing
+        # {"enable_prefill_mc2": "false"} previously *enabled* the feature.
+        # _get_bool must resolve "false" to False so it is actually disabled.
+        test_vllm_config = VllmConfig()
+        test_vllm_config.additional_config = {"enable_prefill_mc2": "false"}
+        ascend_config = init_ascend_config(test_vllm_config)
+        self.assertFalse(ascend_config.enable_prefill_mc2)
+
+    @_clean_up_ascend_config
+    @patch("vllm_ascend.platform.NPUPlatform.check_and_update_config")
+    def test_enable_cpu_binding_string_false_disables_feature(self, mock_fix_incompatible_config):
+        # enable_cpu_binding defaults to True; "false" must turn it off.
+        test_vllm_config = VllmConfig()
+        test_vllm_config.additional_config = {"enable_cpu_binding": "false"}
+        ascend_config = init_ascend_config(test_vllm_config)
+        self.assertFalse(ascend_config.enable_cpu_binding)
+
+    @_clean_up_ascend_config
+    @patch("vllm_ascend.platform.NPUPlatform.check_and_update_config")
+    def test_enable_cpu_binding_rejects_int(self, mock_fix_incompatible_config):
+        # JSON booleans must be true/false; an int 0/1 should fail fast.
+        test_vllm_config = VllmConfig()
+        test_vllm_config.additional_config = {"enable_cpu_binding": 0}
+        with self.assertRaisesRegex(TypeError, "enable_cpu_binding"):
+            init_ascend_config(test_vllm_config)
+
 
 class TestShortRequestFirstConfig(TestBase):
     def test_default_is_disabled(self):
@@ -612,3 +641,53 @@ class TestSchedulerConfig(TestBase):
 
         self.assertTrue(config.enable_balance_scheduling)
         mock_info_once.assert_called_once()
+
+
+class TestGetBool(TestBase):
+    """Tests for ``AscendConfig._get_bool`` strict boolean resolver.
+
+    The central guarantee: the string ``"false"`` must resolve to ``False``,
+    avoiding the Python pitfall where ``bool("false")`` is ``True``.
+    """
+
+    def test_missing_key_returns_default(self):
+        self.assertTrue(AscendConfig._get_bool({}, "enable_x", True))
+        self.assertFalse(AscendConfig._get_bool({}, "enable_x", False))
+
+    def test_real_bool_passes_through(self):
+        self.assertTrue(AscendConfig._get_bool({"enable_x": True}, "enable_x", False))
+        self.assertFalse(AscendConfig._get_bool({"enable_x": False}, "enable_x", True))
+
+    def test_string_false_resolves_to_false(self):
+        # Core regression: bool("false") is True in Python, but _get_bool
+        # must return False so the feature is actually disabled.
+        for val in ("false", "False", "FALSE", "0"):
+            self.assertFalse(AscendConfig._get_bool({"enable_x": val}, "enable_x", True), msg=val)
+
+    def test_string_true_resolves_to_true(self):
+        for val in ("true", "True", "TRUE", "1"):
+            self.assertTrue(AscendConfig._get_bool({"enable_x": val}, "enable_x", False), msg=val)
+
+    def test_none_uses_default(self):
+        self.assertTrue(AscendConfig._get_bool({"enable_x": None}, "enable_x", True))
+        self.assertFalse(AscendConfig._get_bool({"enable_x": None}, "enable_x", False))
+
+    def test_int_rejected(self):
+        # JSON booleans should be true/false, not 0/1.
+        for bad in (0, 1, 2):
+            with self.assertRaises(TypeError):
+                AscendConfig._get_bool({"enable_x": bad}, "enable_x", False)
+
+    def test_other_types_rejected(self):
+        for bad in (1.0, [True], {"a": 1}):
+            with self.assertRaises(TypeError):
+                AscendConfig._get_bool({"enable_x": bad}, "enable_x", False)
+
+    def test_unrecognized_string_rejected(self):
+        for bad in ("yes", "no", "", "maybe"):
+            with self.assertRaises(TypeError):
+                AscendConfig._get_bool({"enable_x": bad}, "enable_x", False)
+
+    def test_error_message_contains_key_name(self):
+        with self.assertRaisesRegex(TypeError, "enable_prefill_mc2"):
+            AscendConfig._get_bool({"enable_prefill_mc2": 1.0}, "enable_prefill_mc2", False)
