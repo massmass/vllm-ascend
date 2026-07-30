@@ -506,6 +506,29 @@ class TestAscendConfig(TestBase):
         with self.assertRaisesRegex(TypeError, "enable_cpu_binding"):
             init_ascend_config(test_vllm_config)
 
+    @_clean_up_ascend_config
+    @patch("vllm_ascend.platform.NPUPlatform.check_and_update_config")
+    def test_enable_mlapo_string_false_disables_feature(self, mock_fix_incompatible_config):
+        # Regression: bool("false") is True in Python, so {"enable_mlapo": "false"}
+        # previously left MLAPO enabled (it defaults to True). _get_bool must
+        # resolve "false" to False so the feature is actually disabled.
+        test_vllm_config = VllmConfig()
+        test_vllm_config.additional_config = {"enable_mlapo": "false"}
+        ascend_config = init_ascend_config(test_vllm_config)
+        self.assertFalse(ascend_config.enable_mlapo)
+
+    @_clean_up_ascend_config
+    @patch("vllm_ascend.platform.NPUPlatform.check_and_update_config")
+    def test_enable_mlapo_env_false_no_longer_crashes(self, mock_fix_incompatible_config):
+        # Regression: `export VLLM_ASCEND_ENABLE_MLAPO=false` used to crash
+        # startup with `ValueError: invalid literal for int() with base 10:
+        # 'false'` because envs.py's lambda does bool(int(os.getenv(...))).
+        # _get_bool reads os.getenv directly and resolves "false" to False.
+        test_vllm_config = VllmConfig()
+        with patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_MLAPO": "false"}):
+            ascend_config = init_ascend_config(test_vllm_config)
+        self.assertFalse(ascend_config.enable_mlapo)
+
 
 class TestShortRequestFirstConfig(TestBase):
     def test_default_is_disabled(self):
@@ -691,3 +714,30 @@ class TestGetBool(TestBase):
     def test_error_message_contains_key_name(self):
         with self.assertRaisesRegex(TypeError, "enable_prefill_mc2"):
             AscendConfig._get_bool({"enable_prefill_mc2": 1.0}, "enable_prefill_mc2", False)
+
+    def test_envs_fallback_resolves_false(self):
+        # The envs=False crash fix: "false" text resolves to False instead of
+        # raising ValueError from int("false").
+        with patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_X": "false"}):
+            self.assertFalse(AscendConfig._get_bool({}, "x", True, env_key="VLLM_ASCEND_ENABLE_X"))
+        with patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_X": "0"}):
+            self.assertFalse(AscendConfig._get_bool({}, "x", True, env_key="VLLM_ASCEND_ENABLE_X"))
+
+    def test_envs_fallback_resolves_true(self):
+        with patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_X": "true"}):
+            self.assertTrue(AscendConfig._get_bool({}, "x", False, env_key="VLLM_ASCEND_ENABLE_X"))
+        with patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_X": "1"}):
+            self.assertTrue(AscendConfig._get_bool({}, "x", False, env_key="VLLM_ASCEND_ENABLE_X"))
+
+    def test_envs_fallback_rejects_bad_text(self):
+        with patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_X": "yes"}), self.assertRaises(TypeError):
+            AscendConfig._get_bool({}, "x", False, env_key="VLLM_ASCEND_ENABLE_X")
+
+    def test_additional_config_overrides_envs(self):
+        with patch.dict(os.environ, {"VLLM_ASCEND_ENABLE_X": "true"}):
+            self.assertFalse(AscendConfig._get_bool({"x": False}, "x", True, env_key="VLLM_ASCEND_ENABLE_X"))
+
+    def test_no_env_and_no_config_returns_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(AscendConfig._get_bool({}, "x", True, env_key="VLLM_ASCEND_ENABLE_X"))
+            self.assertFalse(AscendConfig._get_bool({}, "x", False, env_key="VLLM_ASCEND_ENABLE_X"))

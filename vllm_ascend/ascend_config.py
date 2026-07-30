@@ -170,11 +170,11 @@ class AscendConfig:
                 "VLLM_ASCEND_ENABLE_FUSED_MC2 (fused mc2) and multistream_overlap_shared_expert "
                 "cannot be enabled at the same time. Setting multistream_overlap_shared_expert to False."
             )
-        self.enable_mlapo = self._get_config_value(
+        self.enable_mlapo = self._get_bool(
             additional_config,
             "enable_mlapo",
-            "VLLM_ASCEND_ENABLE_MLAPO",
-            ascend_envs.VLLM_ASCEND_ENABLE_MLAPO,
+            default=True,
+            env_key="VLLM_ASCEND_ENABLE_MLAPO",
         )
         self.msmonitor_use_daemon = self._get_config_value(
             additional_config,
@@ -306,47 +306,80 @@ class AscendConfig:
         return env_value
 
     @staticmethod
-    def _get_bool(additional_config: dict[str, Any], config_key: str, default: bool) -> bool:
-        """Strictly resolve a boolean from ``additional_config``.
+    def _get_bool(
+        additional_config: dict[str, Any],
+        config_key: str,
+        default: bool,
+        env_key: str | None = None,
+    ) -> bool:
+        """Strictly resolve a boolean from ``additional_config``, with optional
+        environment-variable fallback.
 
         Accepts real booleans and the case-insensitive strings
-        ``"true"``/``"false"``/``"0"``/``"1"``. This avoids the Python pitfall
-        where ``bool("false")`` evaluates to ``True``: a user writing
-        ``{"enable_x": "false"}`` in additional-config now correctly *disables*
-        the feature instead of silently enabling it.
+        ``"true"``/``"false"``/``"0"``/``"1"`` — both in ``additional_config``
+        and in the environment variable. This avoids two Python pitfalls:
 
-        ``None`` is treated as "use the default" (key effectively unset). Any
-        other type (int other than via string, float, list, dict, ...) raises
-        ``TypeError`` so mis-typed values fail fast with a clear message rather
-        than being coerced into an unexpected truthiness.
+        1. ``bool("false")`` is ``True`` — ``{"enable_x": "false"}`` now
+           correctly *disables* the feature instead of silently enabling it.
+        2. ``int("false")`` raises ``ValueError`` — ``export
+           VLLM_ASCEND_ENABLE_X=false`` no longer crashes startup (unlike
+           ``envs.py``'s ``bool(int(os.getenv(...)))`` lambdas, which this
+           helper bypasses by reading ``os.getenv`` directly).
 
-        Integer-style booleans like ``{"enable_x": 0}`` are intentionally
-        rejected here — JSON booleans should be ``true``/``false``. Integer
-        enums (e.g. ``weight_nz_mode``) are handled by a separate int helper.
+        ``None`` in additional_config is treated as "use the default". Any other
+        type (int, float, list, dict, ...) raises ``TypeError`` so mis-typed
+        values fail fast with a clear message. Integer-style booleans like
+        ``{"enable_x": 0}`` are intentionally rejected — JSON booleans should be
+        ``true``/``false``; integer enums (e.g. ``weight_nz_mode``) use a
+        separate int helper.
+
+        When ``env_key`` is given and ``config_key`` is absent from
+        ``additional_config``, falls back to the environment variable and emits
+        the same deprecation log as ``_get_config_value`` so migration warnings
+        stay consistent.
         """
-        if config_key not in additional_config:
-            return default
-        value = additional_config[config_key]
-        # NOTE: bool is a subclass of int; check bool first if int support is
-        # ever added here.
-        if isinstance(value, bool):
-            return value
-        if value is None:
-            return default
-        if isinstance(value, str):
-            normalized = value.strip().lower()
+        if config_key in additional_config:
+            value = additional_config[config_key]
+            # NOTE: bool is a subclass of int; check bool first.
+            if isinstance(value, bool):
+                resolved = value
+            elif value is None:
+                return default
+            elif isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in ("true", "1"):
+                    resolved = True
+                elif normalized in ("false", "0"):
+                    resolved = False
+                else:
+                    raise TypeError(
+                        f"additional_config.{config_key} must be a boolean or "
+                        f"one of 'true'/'false'/'0'/'1', got string {value!r}."
+                    )
+            else:
+                raise TypeError(
+                    f"additional_config.{config_key} must be a boolean, got "
+                    f"{type(value).__name__} ({value!r}). Use true/false in JSON."
+                )
+            logger.info_once(f"AscendConfig.{config_key} is set from additional_config with value {resolved}.")
+            return resolved
+        if env_key is not None and env_key in os.environ:
+            raw = os.environ[env_key]
+            normalized = raw.strip().lower()
             if normalized in ("true", "1"):
-                return True
-            if normalized in ("false", "0"):
-                return False
-            raise TypeError(
-                f"additional_config.{config_key} must be a boolean or one of "
-                f"'true'/'false'/'0'/'1', got string {value!r}."
+                resolved = True
+            elif normalized in ("false", "0"):
+                resolved = False
+            else:
+                raise TypeError(f"Environment variable {env_key} must be one of 'true'/'false'/'0'/'1', got {raw!r}.")
+            logger.info_once(
+                f"AscendConfig.{config_key} falls back to environment variable "
+                f"{env_key} with value {resolved}. Please use "
+                f"additional_config.{config_key} instead, because {env_key} will "
+                "be removed in the next release."
             )
-        raise TypeError(
-            f"additional_config.{config_key} must be a boolean, got "
-            f"{type(value).__name__} ({value!r}). Use true/false in JSON."
-        )
+            return resolved
+        return default
 
     @classmethod
     def _check_mooncake_c8_kv_cache_quant(cls, vllm_config: "VllmConfig") -> None:
