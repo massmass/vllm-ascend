@@ -67,7 +67,7 @@ _DYNAMIC_EPLB_BUFFER_SIZE = 100
 _IS_MOE_MODEL = None
 _IS_DRAFTER_MOE_MODEL = None
 _IS_VL_MODEL = None
-_ENABLE_SP = None
+_ENABLE_SP: bool | None = None
 _HAS_LAYER_IDX = None
 _HAS_ROPE = None
 _ATNN_CALCULATION_STREAM = None
@@ -877,13 +877,13 @@ def enable_sp(vllm_config=None, enable_shared_expert_dp: bool = False, *, ascend
         enabled = ascend_config.enable_flashcomm1 or ascend_config.enable_shared_expert_dp
         if not ascend_config.enable_flashcomm1 and enable_shared_expert_dp:
             logger.info("shared_expert_dp requires enable_sp=True. enable_sp has been set to True.")
-        return bool(enabled)
+        return enabled
 
     if _ENABLE_SP is None:
         config = get_ascend_config()
         _ENABLE_SP = config.enable_flashcomm1 or config.enable_shared_expert_dp
 
-    return bool(_ENABLE_SP)
+    return _ENABLE_SP
 
 
 # TODO remove it after vllm has this func
