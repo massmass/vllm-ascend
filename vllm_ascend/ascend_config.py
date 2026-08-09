@@ -21,7 +21,6 @@ import os
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import ConfigDict, TypeAdapter, model_validator
-from pydantic_core import ArgsKwargs
 from vllm.config.utils import config
 from vllm.logger import logger
 from vllm.utils.math_utils import cdiv
@@ -214,7 +213,7 @@ class AscendConfig:
     dump_config_path: str | None = None
     c8_enable_reshape_optim: bool = False
 
-    # ---- A-family (envs fallback): default = envs module value, before-validator injects ----
+    # ---- migrated additional-config fields ----
     enable_flashcomm1: bool = False
     enable_fused_mc2: int = 0
     enable_mlapo: bool = True
@@ -250,36 +249,6 @@ class AscendConfig:
     _sparse_li_c8_layer_ids: set[int] = dataclasses.field(default_factory=set, init=False, repr=False)
     _sparse_li_c8_layer_names: set[str] = dataclasses.field(default_factory=set, init=False, repr=False)
     _sparse_li_c8_layer_filter_enabled: bool = dataclasses.field(default=False, init=False, repr=False)
-
-    # ---- A-family envs fallback (before, handles ArgsKwargs) ----
-    @model_validator(mode="before")
-    @classmethod
-    def _env_fallback(cls, data: Any) -> Any:
-        if not isinstance(data, ArgsKwargs):
-            return data
-        kw = dict(data.kwargs)
-        from vllm_ascend import envs as ascend_envs
-
-        _A_FAMILY = {
-            "enable_flashcomm1": "VLLM_ASCEND_ENABLE_FLASHCOMM1",
-            "enable_fused_mc2": "VLLM_ASCEND_ENABLE_FUSED_MC2",
-            "enable_mlapo": "VLLM_ASCEND_ENABLE_MLAPO",
-            "msmonitor_use_daemon": "MSMONITOR_USE_DAEMON",
-            "enable_transpose_kv_cache_by_block": "VLLM_ASCEND_FUSION_OP_TRANSPOSE_KV_CACHE_BY_BLOCK",
-            "weight_nz_mode": "VLLM_ASCEND_ENABLE_NZ",
-        }
-        for key, env_name in _A_FAMILY.items():
-            if key in kw:
-                logger.info_once(f"AscendConfig.{key} is set from additional_config with value {kw[key]}.")
-            elif env_name in os.environ:
-                env_value = getattr(ascend_envs, env_name)
-                logger.info_once(
-                    f"AscendConfig.{key} falls back to environment variable {env_name} with value {env_value}. "
-                    f"Please use additional_config.{key} instead, because {env_name} will be removed in the "
-                    "next release."
-                )
-                kw[key] = env_value
-        return ArgsKwargs(data.args, kw)
 
     @model_validator(mode="after")
     def _validate_user_input_ranges(self):
@@ -367,14 +336,11 @@ class AscendConfig:
         assert not (
             self.enable_fused_mc2 == 1
             and any(architecture.startswith("MiniMaxM3") for architecture in model_architectures)
-        ), (
-            "MiniMax M3 does not support enable_fused_mc2=1. Please set "
-            "additional_config.enable_fused_mc2 to 0 or unset VLLM_ASCEND_ENABLE_FUSED_MC2."
-        )
+        ), "MiniMax M3 does not support enable_fused_mc2=1. Please set additional_config.enable_fused_mc2 to 0."
         if self.enable_fused_mc2 == 1 and self.multistream_overlap_shared_expert:
             self.multistream_overlap_shared_expert = False
             logger.warning_once(
-                "VLLM_ASCEND_ENABLE_FUSED_MC2 (fused mc2) and multistream_overlap_shared_expert "
+                "enable_fused_mc2 and multistream_overlap_shared_expert "
                 "cannot be enabled at the same time. Setting multistream_overlap_shared_expert to False."
             )
 
@@ -896,8 +862,6 @@ class SchedulerConfig:
             return default
 
         resolved = {
-            # VLLM_ASCEND_BALANCE_SCHEDULING is being sunset; do not carry its
-            # environment fallback into the new construction path.
             "enable_balance_scheduling": _resolve("enable_balance_scheduling", False),
             "recompute_scheduler_enable": _resolve("recompute_scheduler_enable", False),
             # Let pydantic coerce the resolved dicts into typed sub-configs.
