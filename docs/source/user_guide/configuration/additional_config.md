@@ -4,17 +4,17 @@ Additional configuration is a mechanism provided by vLLM to allow plugins to con
 
 ## Migration Guide
 
-Starting from [PR #9064](https://github.com/vllm-project/vllm-ascend/pull/9064), vLLM Ascend is migrating **10 environment variables** to `--additional-config`.
+Starting from [PR #9064](https://github.com/vllm-project/vllm-ascend/pull/9064), vLLM Ascend migrated the following runtime options from environment variables to `--additional-config`.
 
 ### Important Notice
 
-- **Current Support**: Both environment variables and `--additional-config` are supported during the transition period
-- **Recommendation**: Use `--additional-config` for new deployments and migrate existing configurations
-- **Future Plan**: Environment variables will be **removed** in a future release; only `--additional-config` will be supported
+- **Supported path**: Use `--additional-config` for these options.
+- **Legacy behavior removed**: The legacy environment variables below no longer populate the corresponding `AscendConfig` fields.
+- **Required action**: Update existing deployment manifests to pass the mapped additional-config keys.
 
 ### Quick Reference
 
-| Environment Variable | Config Key | Type Conversion |
+| Legacy Environment Variable | Supported Config Key | Value Example |
 |---------------------|------------|-----------------|
 | `VLLM_ASCEND_BALANCE_SCHEDULING` | `scheduler_config.enable_balance_scheduling` | `"1"` → `true`, `"0"` → `false` |
 | `VLLM_ASCEND_ENABLE_FLASHCOMM1` | `enable_flashcomm1` | `"1"` → `true`, `"0"` → `false` |
@@ -84,13 +84,13 @@ The following table lists additional configuration options available in vLLM Asc
 | `enable_mc2_hierarchy_comm`         | bool | `False` | Enable dispatch/combine op inter-node communication by ROCE. |
 | `enable_prefill_mc2`                | bool | `False` | Whether to reserve mc2_token_capacity for prefill batches. When enabled, `max_num_batched_tokens` is used to calculate the mc2_token_capacity instead of the decode-only capacity. In this scenario, the recommended maximum value of `max_num_batched_tokens` is `tp_size * 512`. This is a temporary switch; once MC2 operators are complete for all scenarios, this switch will be removed and MC2 will be enabled by default. |
 | `mega_moe_max_tokens`               | int  | `65536` | Per-rank token capacity after dispatch in the mega moe (dispatch_ffn_combine) fused operator. When load imbalance causes a rank to receive more tokens than this limit, the excess tokens are dropped and skipped from computation, degrading accuracy. Do not set this too large: workspace memory scales linearly with this value. |
-| `enable_flashcomm1`                 | bool | `False` | Whether to enable FlashComm1 optimization. Can also be configured via the `VLLM_ASCEND_ENABLE_FLASHCOMM1` environment variable during the migration period. |
-| `msmonitor_use_daemon`              | bool | `False` | Whether to use daemon mode for msmonitor. Can also be configured via the `MSMONITOR_USE_DAEMON` environment variable during the migration period. |
-| `enable_mlapo`                      | bool | `True`  | Whether to enable MLAPO (Model Layer-wise Adaptive Parallel Optimization). Can also be configured via the `VLLM_ASCEND_ENABLE_MLAPO` environment variable during the migration period. |
-| `weight_nz_mode`                    | int  | `1`     | Weight NZ mode. Can also be configured via the `VLLM_ASCEND_ENABLE_NZ` environment variable during the migration period. |
-| `enable_context_parallel`           | bool | `False` | Whether to enable context parallelism. Can also be configured via the `VLLM_ASCEND_ENABLE_CONTEXT_PARALLEL` environment variable during the migration period. |
-| `enable_fused_mc2`                  | int  | `0`     | Fused MC2 configuration. Can also be configured via the `VLLM_ASCEND_ENABLE_FUSED_MC2` environment variable during the migration period. |
-| `enable_transpose_kv_cache_by_block`| bool | `True`  | Whether to enable transpose KV cache by block. Can also be configured via the `VLLM_ASCEND_FUSION_OP_TRANSPOSE_KV_CACHE_BY_BLOCK` environment variable during the migration period. |
+| `enable_flashcomm1`                 | bool | `False` | Whether to enable FlashComm1 optimization. |
+| `msmonitor_use_daemon`              | bool | `False` | Whether to use daemon mode for msmonitor. |
+| `enable_mlapo`                      | bool | `True`  | Whether to enable MLAPO (Model Layer-wise Adaptive Parallel Optimization). |
+| `weight_nz_mode`                    | int  | `1`     | Weight NZ mode. |
+| `enable_context_parallel`           | bool | `False` | Whether to enable context parallelism. |
+| `enable_fused_mc2`                  | int  | `0`     | Fused MC2 configuration. |
+| `enable_transpose_kv_cache_by_block`| bool | `True`  | Whether to enable transpose KV cache by block. |
 | `enable_dsa_cp`                     | bool | `False` | Whether to enable dsa_cp for DeepSeek V3.2, DeepSeek V4, and other models with the same architecture. This feature depends on FlashComm1. Please ensure that FlashComm1 is enabled before enabling this feature.|
 | `rejection_sampler_config`          | dict | `{}`    | Configuration options for rejection sampler (block verify and entropy verify). |
 | `dynamic_spec_config`               | dict | `{}`    | Configuration options for Dynamic Speculative Decoding. See [Dynamic Speculative Decoding](../feature_guide/speculative_decoding.md#dynamic-speculative-decoding). |
@@ -157,7 +157,7 @@ The legacy top-level `enable_balance_scheduling`, `recompute_scheduler_enable`, 
 
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
-| `enable_balance_scheduling` | bool | `False` | Whether to enable balance scheduling. Can also be configured via the `VLLM_ASCEND_BALANCE_SCHEDULING` environment variable during the migration period. |
+| `enable_balance_scheduling` | bool | `False` | Whether to enable balance scheduling. |
 | `recompute_scheduler_enable` | bool | `False` | Whether to enable the recompute scheduler. **Only valid on PD-disaggregated D nodes** (`kv_role` is `kv_consumer`). **Do not enable on P nodes or in PD-mixed mode** (no `kv_transfer_config`, `kv_role` is `kv_producer`, or `kv_role` is `kv_both`); startup will fail with a clear error. |
 | `profiling_chunk_config` | dict | `{}` | Configuration options for dynamic chunked pipeline parallel. See [Dynamic Chunked Pipeline Parallel](../feature_guide/dynamic_chunk_pipeline_parallel.md) for details. |
 | `short_request_first_config` | dict | `{}` | Configuration options for ShortRequestFirst prefill scheduling on FCFS synchronous or asynchronous, PD-prefill (P), or PD-mixed nodes. |
