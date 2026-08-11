@@ -175,12 +175,19 @@ class AscendConfig:
     Migrated to ``@config`` (pydantic dataclass). User-input switches are now
     typed fields with lax bool/int coercion (``"false"``→False, ``"2"``→2),
     fixing the ``bool("false")``/``"2"==2`` pitfalls. Unknown keys are
-    forbidden (``extra="forbid"``). A-family env-var fallbacks (additional_config
-    → envs → default) run in a ``before`` model_validator. Cross-config
-    derivations, downgrades and mutex checks that need ``vllm_config`` run in
-    ``derive_and_validate()``, a plain method invoked explicitly by
+    forbidden (``extra="forbid"``). Range/enum checks on individual fields run
+    in ``after`` model_validators (e.g. ``weight_nz_mode ∈ {0,1,2}``). Cross-
+    config derivations, downgrades and mutex checks that need ``vllm_config``
+    run in ``derive_and_validate()``, a plain method invoked explicitly by
     ``init_ascend_config`` (not a pydantic validator) — preserving original
     ordering and error messages.
+
+    Note on A-family env vars (``VLLM_ASCEND_ENABLE_FLASHCOMM1`` etc.): they
+    are defined in ``vllm_ascend.envs`` and read directly at runtime call
+    sites (e.g. ``lora/fused_moe.py``), not via this config. The corresponding
+    fields here are plain typed fields; absent from ``additional_config`` they
+    take their pydantic defaults. There is no ``additional_config → envs →
+    default`` fallback chain and no ``before`` model_validator.
 
     ``vllm_config`` is NOT a member of AscendConfig (neither a declared
     pydantic field nor a plain instance attribute). Pydantic handles only
