@@ -182,13 +182,6 @@ class AscendConfig:
     ``init_ascend_config`` (not a pydantic validator) — preserving original
     ordering and error messages.
 
-    Note on A-family env vars (``VLLM_ASCEND_ENABLE_FLASHCOMM1`` etc.): they
-    are defined in ``vllm_ascend.envs`` and read directly at runtime call
-    sites (e.g. ``lora/fused_moe.py``), not via this config. The corresponding
-    fields here are plain typed fields; absent from ``additional_config`` they
-    take their pydantic defaults. There is no ``additional_config → envs →
-    default`` fallback chain and no ``before`` model_validator.
-
     ``vllm_config`` is NOT a member of AscendConfig (neither a declared
     pydantic field nor a plain instance attribute). Pydantic handles only
     type/range/enum validation here; the factory passes ``vllm_config``
