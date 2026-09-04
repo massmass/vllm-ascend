@@ -1407,40 +1407,6 @@ void inplace_partial_rotary_mul_npu(at::Tensor & x, const at::Tensor &r1, const 
     EXEC_NPU_CMD(aclnnInplacePartialRotaryMul, x, r1, r2, it->second, partial_slice);
 }
 
-std::tuple<at::Tensor, at::Tensor> npu_rms_norm_dynamic_quant_npu(
-    const at::Tensor& x,
-    const at::Tensor& gamma,
-    const c10::optional<at::Tensor>& smooth_scale,
-    const c10::optional<at::Tensor>& beta,
-    double epsilon)
-{
-    constexpr int32_t SIZE = 8;
-    TORCH_CHECK(x.numel() > 0, "Input tensor x should not be empty.");
-    TORCH_CHECK(gamma.numel() > 0, "Input tensor gamma should not be empty.");
-    TORCH_CHECK(gamma.dim() == 1 && gamma.size(0) == x.size(-1), "gamma dim are not equal to last dim of x shape.");
-    TORCH_CHECK(epsilon > 0, "epsilon should be greater than 0.");
-    TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kBFloat16, "x should be FLOAT16, BFLOAT16.");
-
-    at::Tensor smooth_scale2{nullptr};
-    auto options = x.options();
-    at::Tensor y_out = at::empty_like(x, options.dtype(at::kChar));
-    at::Tensor y2_out = at::empty({1}, options.dtype(at::kChar));
-
-    c10::SmallVector<int64_t, SIZE> scale_out_shape;
-    for (size_t i = 0; i < x.sizes().size() - 1; i++) {
-        scale_out_shape.push_back(x.sizes()[i]);
-    }
-    at::Tensor scale_out = at::empty(scale_out_shape, options.dtype(at::kFloat));
-    at::Tensor scale2_out = at::empty_like(scale_out);
-    std::array<bool, 2>* output_mask = nullptr;
-    int64_t* dst_type = nullptr;
-
-    EXEC_NPU_CMD(aclnnRmsNormDynamicQuant, x, gamma, smooth_scale, smooth_scale2, beta, epsilon, output_mask, dst_type,
-                 y_out, y2_out, scale_out, scale2_out);
-
-    return std::make_tuple(y_out, scale_out);
-}
-
 void validate_kv_compress_epilog_inputs(
     const at::Tensor& x,
     const at::Tensor& slot_mapping,
@@ -2505,17 +2471,6 @@ TORCH_LIBRARY_EXPAND(CONCAT(_C, _ascend), ops)
         ") -> ()"
     );
     ops.impl("inplace_partial_rotary_mul", torch::kPrivateUse1, &vllm_ascend::inplace_partial_rotary_mul_npu);
-
-    ops.def(
-        "npu_rms_norm_dynamic_quant("
-            "Tensor x, "
-            "Tensor gamma, "
-            "Tensor? smooth_scale=None, "
-            "Tensor? beta=None, "
-            "float epsilon=1e-6"
-        ") -> (Tensor y_out, Tensor scale_out)"
-        );
-    ops.impl("npu_rms_norm_dynamic_quant", torch::kPrivateUse1, &vllm_ascend::npu_rms_norm_dynamic_quant_npu);
 
     ops.def(
         "kv_compress_epilog("

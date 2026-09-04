@@ -1535,9 +1535,7 @@ class AscendDSAImpl(AttentionImplBase[Any]):
 
         # q
         if _is_w8a8_dynamic(self.wq_b):
-            qr, qr_pertoken_scale = torch.ops._C_ascend.npu_rms_norm_dynamic_quant(
-                q_a, self.q_norm.weight, epsilon=self.eps
-            )
+            qr, qr_pertoken_scale = torch_npu.npu_rms_norm_dynamic_quant(q_a, self.q_norm.weight, epsilon=self.eps)
             q = torch_npu.npu_quant_matmul(
                 qr,
                 self.wq_b.weight,
@@ -1661,7 +1659,7 @@ class AscendDSAImpl(AttentionImplBase[Any]):
             q_b_quant, q_b_scale = self.cv_wq_b.quantize(qr)
             qr_pertoken_scale = None
         elif is_w8a8:
-            qr, qr_pertoken_scale = torch.ops._C_ascend.npu_rms_norm_dynamic_quant(
+            qr, qr_pertoken_scale = torch_npu.npu_rms_norm_dynamic_quant(
                 wq_a_result, self.q_norm.weight, epsilon=self.eps
             )
             q_b_quant, q_b_scale = qr, qr_pertoken_scale

@@ -1087,24 +1087,6 @@ void inplace_partial_rotary_mul_meta(
     return;
 }
 
-std::tuple<at::Tensor, at::Tensor> npu_rms_norm_dynamic_quant_meta(
-    const at::Tensor& x,
-    const at::Tensor& gamma,
-    const c10::optional<at::Tensor>& smooth_scale,
-    const c10::optional<at::Tensor>& beta,
-    double epsilon)
-{
-    at::Tensor y_out = at::empty_like(x);
-    auto options = x.options();
-    c10::SymDimVector scale_out_shape;
-    for (size_t i = 0; i < x.dim() - 1; i++) {
-        scale_out_shape.push_back(x.sym_size(i));
-    }
-    at::Tensor scale_out = at::empty_symint(scale_out_shape, options.dtype(at::kFloat));
-
-    return std::make_tuple(y_out, scale_out);
-}
-
 void kv_compress_epilog_meta(
     at::Tensor& kv_compress_cache,
     const at::Tensor& x,
@@ -2007,7 +1989,6 @@ TORCH_LIBRARY_IMPL_EXPAND(CONCAT(_C, _ascend), Meta, ops) {
     ops.impl("npu_hc_post", &vllm_ascend::meta::npu_hc_post_meta);
     ops.impl("npu_hc_pre_v2", &vllm_ascend::meta::npu_hc_pre_meta);
     ops.impl("inplace_partial_rotary_mul", &vllm_ascend::meta::inplace_partial_rotary_mul_meta);
-    ops.impl("npu_rms_norm_dynamic_quant", &vllm_ascend::meta::npu_rms_norm_dynamic_quant_meta);
     ops.impl("kv_compress_epilog", &vllm_ascend::meta::kv_compress_epilog_meta);
     ops.impl("npu_kv_quant_sparse_attn_sharedkv", &vllm_ascend::meta::npu_kv_quant_sparse_attn_sharedkv_meta);
     ops.impl("npu_kv_quant_sparse_attn_sharedkv_metadata",

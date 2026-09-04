@@ -1811,7 +1811,7 @@ class AscendDSACPImpl(AttentionImplBase[Any]):
             self.wq_b.quant_method.quant_method, AscendW8A8DynamicLinearMethod
         ):
             q_a = self.wq_a(hidden_states_local)
-            qr_local, qr_pertoken_scale_local = torch.ops._C_ascend.npu_rms_norm_dynamic_quant(
+            qr_local, qr_pertoken_scale_local = torch_npu.npu_rms_norm_dynamic_quant(
                 q_a, self.q_norm.weight, epsilon=self.eps
             )
             q = torch_npu.npu_quant_matmul(

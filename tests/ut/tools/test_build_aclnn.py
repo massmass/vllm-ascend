@@ -1,6 +1,16 @@
 from pathlib import Path
 
 BUILD_ACLNN_SCRIPT = Path(__file__).parents[3] / "csrc" / "build_aclnn.sh"
+REPOSITORY_ROOT = BUILD_ACLNN_SCRIPT.parents[1]
+RMS_NORM_DYNAMIC_QUANT_CALLERS = (
+    REPOSITORY_ROOT / "vllm_ascend" / "attention" / "dsa_v1.py",
+    REPOSITORY_ROOT / "vllm_ascend" / "attention" / "context_parallel" / "dsa_cp.py",
+)
+RMS_NORM_DYNAMIC_QUANT_CUSTOM_SOURCE = REPOSITORY_ROOT / "csrc" / "attention" / "rms_norm_dynamic_quant"
+RMS_NORM_DYNAMIC_QUANT_TORCH_BINDINGS = (
+    REPOSITORY_ROOT / "csrc" / "torch_binding.cpp",
+    REPOSITORY_ROOT / "csrc" / "torch_binding_meta.cpp",
+)
 
 
 def _custom_ops_for_soc(script: str, soc_pattern: str) -> set[str]:
@@ -26,3 +36,13 @@ def test_a2_and_a3_use_official_rms_norm_dynamic_quant() -> None:
 
     assert "rms_norm_dynamic_quant" not in a2_ops
     assert "rms_norm_dynamic_quant" not in a3_ops
+
+    for caller in RMS_NORM_DYNAMIC_QUANT_CALLERS:
+        caller_source = caller.read_text()
+        assert "torch.ops._C_ascend.npu_rms_norm_dynamic_quant" not in caller_source
+        assert "torch_npu.npu_rms_norm_dynamic_quant" in caller_source
+
+    for torch_binding in RMS_NORM_DYNAMIC_QUANT_TORCH_BINDINGS:
+        assert "npu_rms_norm_dynamic_quant" not in torch_binding.read_text()
+
+    assert not RMS_NORM_DYNAMIC_QUANT_CUSTOM_SOURCE.exists()
