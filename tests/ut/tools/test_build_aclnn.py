@@ -18,11 +18,11 @@ def _custom_ops_for_soc(script: str, soc_pattern: str) -> set[str]:
     }
 
 
-def test_a3_uses_official_rms_norm_dynamic_quant() -> None:
+def test_a2_and_a3_use_official_rms_norm_dynamic_quant() -> None:
     script = BUILD_ACLNN_SCRIPT.read_text()
 
     a2_ops = _custom_ops_for_soc(script, "ascend910b")
     a3_ops = _custom_ops_for_soc(script, "ascend910_93")
 
-    assert "rms_norm_dynamic_quant" in a2_ops
+    assert "rms_norm_dynamic_quant" not in a2_ops
     assert "rms_norm_dynamic_quant" not in a3_ops

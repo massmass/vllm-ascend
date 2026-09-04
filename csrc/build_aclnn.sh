@@ -95,6 +95,10 @@ elif [[ "$SOC_VERSION" =~ ^ascend910b ]]; then
     # dependency: catlass
     setup_catlass_dependency
 
+    # CANN provides aclnnRmsNormDynamicQuant. Exclude the same-named custom
+    # op so the torch binding resolves the official implementation from
+    # libopapi.so after custom-op lookup misses.
+
     CUSTOM_OPS_ARRAY=(
         "scatter_nd_update_v2"
         "moe_grouped_matmul"
@@ -118,7 +122,6 @@ elif [[ "$SOC_VERSION" =~ ^ascend910b ]]; then
         "hc_pre"
         "hc_post"
         "inplace_partial_rotary_mul"
-        "rms_norm_dynamic_quant"
         "dequant_situ_quant"
         "dequant_swiglu_quant"
         "grouped_matmul_swiglu_quant"
