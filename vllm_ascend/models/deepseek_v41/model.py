@@ -77,7 +77,7 @@ from .engram import (
     PagedNgramHistory,
     engram_cpu_offload,
     engram_enabled,
-    engram_gate,
+    engram_gate_fused,
 )
 from .indexer import DeepseekV41Indexer
 
@@ -1160,7 +1160,7 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
                 active_mask = token_mask[:n]
                 kv = layer.engram.wkv(lookup)
                 key, value = kv.split([self.hc_mult * self.config.hidden_size, self.config.hidden_size], -1)
-                hidden_states[:n] = engram_gate(
+                hidden_states[:n] = engram_gate_fused(
                     hidden_states[:n],
                     key.view(n, self.hc_mult, self.config.hidden_size),
                     value,
